@@ -5,7 +5,8 @@
         <div class="container-fluid banner-container">
             <div class="banner-row">
         
-         
+               <input type="hidden" name="requestid" value="{{ $requestid }}">
+
                 <!-- Logo (Left) -->
                 <div class="banner-logo-container">
                     <img src="{{ asset('asset/logo.png') }}" class="banner-logo" alt="Logo">
@@ -62,7 +63,7 @@
                     </div>
                 </div>
 
-                <livewire:feedback-form :policy="$policy" />
+                <livewire:feedback-form :requestid="$requestid" />
 
             </div>
         </div>

@@ -1,55 +1,53 @@
 <?php
-
 namespace App\Http\Controllers;
 
-use App\Models\Feedback;
 use Illuminate\Http\Request;
+use App\Models\Feedback;
+use App\Models\Customer; // Assuming your customer table is called 'Caller'
 
 class FeedbackController extends Controller
 {
-    // Normal form (if opened without signed link)
-    public function index(Request $request)
+    // LOAD FEEDBACK FORM (no requestid)
+    public function index()
     {
-        // Get policy if exists in URL
-        $policy = $request->policy ?? null;
-
-        return view('feedbackform.feedback', compact('policy'));
+        $customers = Customer::all(); // fetch all callers
+        return view('feedbackform.feedback', [
+            'requestid' => null,
+            'customers' => $customers,
+        ]);
     }
 
-    // Save feedback
+    // HANDLE FEEDBACK LINK
+    public function handleLink($requestid, $token=null)
+    {
+        $customer = Customer::where('requestid', $requestid)->first();
+
+        return view('feedbackform.feedback', [
+            'requestid' => $requestid,
+            'customers' => $customer ? [$customer] : [],
+        ]);
+    }
+
+    // STORE FEEDBACK
     public function store(Request $request)
     {
-        Feedback::create([
-            'token_number' => $request->policy,   // SAVE POLICY HERE
-            'nps_score'    => $request->nps_score,
-            'main_options' => $request->main_options,
-            'sub_options'  => $request->sub_options,
-            'comment'      => $request->comment,
+        $request->validate([
+            'requestid' => 'required|string',
+            'nps_score' => 'required|integer',
         ]);
 
-        return back()->with('success', 'Thank you for your feedback!');
-    }
+        Feedback::create([
+            'requestid'     => $request->requestid,
+            'nps_score'     => $request->nps_score,
+            'main_options'  => json_encode($request->main_options ?? []),
+            'sub_options'   => json_encode($request->sub_options ?? []),
+            'comment'       => $request->comment,
+            'remark'        => $request->remark ?? null,
+            'status'        => 'submitted',
+        ]);
 
-    // Signed URL handler
-    public function handleLink(Request $request)
-    {
-        $policy = $request->policy;
-        $exp    = $request->exp;
-        $sig    = $request->sig;
-
-        $secret = "my_super_secret_key";
-
-        if (time() > $exp) {
-            abort(403, "Link Expired");
-        }
-
-        $expected = hash_hmac("sha256", $policy . $exp, $secret);
-
-        if (!hash_equals($expected, $sig)) {
-            abort(403, "Invalid Signature");
-        }
-
-        // Send verified policy to blade
-        return view('feedbackform.feedback', compact('policy'));
+        return redirect()
+            ->back()
+            ->with('success', 'Feedback saved successfully!');
     }
 }
