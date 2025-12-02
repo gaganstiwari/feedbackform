@@ -9,12 +9,15 @@ class Feedback extends Model
     protected $table = 'feedbacks';
 
     protected $fillable = [
+        'token_number',
         'requestid',
         'nps_score',
         'main_options',
         'sub_options',
         'comment',
-        'status'
+        'remark',
+        'status',
+        'case_status',
     ];
 
     protected $casts = [

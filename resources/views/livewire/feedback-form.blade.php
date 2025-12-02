@@ -17,15 +17,22 @@
         </div>
 
         <script>
-            let sec = 4;
-            const cd = document.getElementById('countdown');
-            setInterval(() => {
-                sec--;
-                cd.textContent = sec;
-                if (sec <= 0) {
-                    window.location.href = "https://callmedilife.com/";
-                }
-            }, 1000);
+            (function() {
+                let sec = 4;
+                const cd = document.getElementById('countdown');
+                if (!cd) return;
+                
+                const countdownInterval = setInterval(() => {
+                    sec--;
+                    if (cd) {
+                        cd.textContent = sec;
+                    }
+                    if (sec <= 0) {
+                        clearInterval(countdownInterval);
+                        window.location.href = "https://callmedilife.com/";
+                    }
+                }, 1000);
+            })();
         </script>
     @endif
 

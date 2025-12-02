@@ -4,8 +4,6 @@
     <section class="banner">
         <div class="container-fluid banner-container">
             <div class="banner-row">
-        
-               <input type="hidden" name="requestid" value="{{ $requestid }}">
 
                 <!-- Logo (Left) -->
                 <div class="banner-logo-container">
@@ -63,7 +61,7 @@
                     </div>
                 </div>
 
-                <livewire:feedback-form :requestid="$requestid" />
+                <livewire:feedback-form :requestid="$requestid ?? null" :token_number="$token_number ?? null" />
 
             </div>
         </div>
@@ -879,6 +877,16 @@
                 npsBoxes.forEach((box, index) => {
                     box.classList.toggle('active', index === score);
                 });
+            }
+        });
+
+        // Save data when user is about to leave the page
+        window.addEventListener('beforeunload', function(e) {
+            // Trigger auto-save via Livewire
+            if (typeof Livewire !== 'undefined') {
+                // Livewire will auto-save on property changes, but we can force a save
+                // The autoSave() method is already called on every update, so data should be saved
+                console.log('Page unloading - data should be auto-saved');
             }
         });
 

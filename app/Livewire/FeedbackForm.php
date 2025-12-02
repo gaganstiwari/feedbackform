@@ -4,6 +4,7 @@ namespace App\Livewire;
 
 use Livewire\Component;
 use App\Models\Feedback;
+use Illuminate\Support\Facades\Log;
 
 class FeedbackForm extends Component
 {
@@ -17,6 +18,7 @@ class FeedbackForm extends Component
     public $comment = '';
     public $nps_score = null;
     public $requestid = null;
+    public $token_number = null;
 
     public $feedback_id = null;
     public $formSubmitted = false;
@@ -26,14 +28,31 @@ class FeedbackForm extends Component
         'policyReceived' => 'setPolicy',
     ];
 
-    public function mount($requestid = null)
+    public function mount($requestid = null, $token_number = null)
     {
         $this->requestid = $requestid;
+        $this->token_number = $token_number;
 
+        // If we have token_number, use it as requestid
+        if ($this->token_number && !$this->requestid) {
+            $this->requestid = $this->token_number;
+        }
+
+        // Load existing draft if available
         if ($this->requestid) {
-            $draft = Feedback::where('requestid', $this->requestid)
-                ->whereNull('remark')
-                ->first();
+            $draft = Feedback::where(function($query) {
+                if ($this->token_number) {
+                    $query->where('token_number', $this->token_number);
+                }
+                if ($this->requestid) {
+                    $query->orWhere('requestid', $this->requestid);
+                }
+            })
+            ->where(function($query) {
+                $query->whereNull('remark')
+                      ->orWhere('remark', '!=', 'completed');
+            })
+            ->first();
 
             if ($draft) {
                 $this->feedback_id = $draft->id;
@@ -41,6 +60,11 @@ class FeedbackForm extends Component
                 $this->selectedOptions = $draft->main_options ?? [];
                 $this->selectedSubOptions = $draft->sub_options ?? [];
                 $this->comment = $draft->comment ?? '';
+                
+                // Trigger question display if score exists
+                if ($this->nps_score !== null) {
+                    $this->handleNpsClick($this->nps_score);
+                }
             }
         }
     }
@@ -52,26 +76,26 @@ class FeedbackForm extends Component
 
     private function autoSave()
     {
-        if (!$this->requestid) return;
+        if (!$this->requestid && !$this->token_number) return;
+
+        $data = [
+            'token_number' => $this->token_number,
+            'requestid' => $this->requestid,
+            'nps_score' => $this->nps_score,
+            'main_options' => $this->selectedOptions ?? [],
+            'sub_options' => $this->selectedSubOptions ?? [],
+            'comment' => $this->comment,
+            'status' => 'draft',
+            'remark' => null,
+        ];
 
         if (!$this->feedback_id) {
-            $feedback = Feedback::create([
-                'requestid' => $this->requestid,
-                'nps_score' => $this->nps_score,
-                'main_options' => $this->selectedOptions ?? [],
-                'sub_options' => $this->selectedSubOptions ?? [],
-                'comment' => $this->comment,
-                'status' => null,
-                'remark' => null,
-            ]);
+            $feedback = Feedback::create($data);
             $this->feedback_id = $feedback->id;
+            Log::info('Feedback draft created', ['id' => $feedback->id]);
         } else {
-            Feedback::where('id', $this->feedback_id)->update([
-                'nps_score' => $this->nps_score,
-                'main_options' => $this->selectedOptions ?? [],
-                'sub_options' => $this->selectedSubOptions ?? [],
-                'comment' => $this->comment,
-            ]);
+            Feedback::where('id', $this->feedback_id)->update($data);
+            Log::info('Feedback draft updated', ['id' => $this->feedback_id]);
         }
     }
 
@@ -161,19 +185,48 @@ class FeedbackForm extends Component
 
     public function submit()
     {
-        if (!$this->feedback_id) {
-            session()->flash('error', 'Please fill feedback.');
+        // Validate NPS score is selected
+        if ($this->nps_score === null) {
+            session()->flash('error', 'Please select an NPS score first.');
             return;
         }
 
-        Feedback::where('id', $this->feedback_id)->update([
-            'remark' => 'completed',
-            'status' => 'completed',
-        ]);
+        // Validate NPS score range
+        if ($this->nps_score < 0 || $this->nps_score > 10) {
+            session()->flash('error', 'Invalid NPS score.');
+            return;
+        }
 
-        $this->formSubmitted = true;
+        try {
+            $data = [
+                'token_number' => $this->token_number,
+                'requestid' => $this->requestid,
+                'nps_score' => (int) $this->nps_score,
+                'main_options' => !empty($this->selectedOptions) ? $this->selectedOptions : null,
+                'sub_options' => !empty($this->selectedSubOptions) ? $this->selectedSubOptions : null,
+                'comment' => !empty($this->comment) ? trim($this->comment) : null,
+                'remark' => 'completed',
+                'status' => 'completed',
+            ];
 
-        $this->dispatchBrowserEvent('feedbackSubmitted');
+            if ($this->feedback_id) {
+                // Update existing feedback
+                Feedback::where('id', $this->feedback_id)->update($data);
+                Log::info('Feedback completed', ['id' => $this->feedback_id]);
+            } else {
+                // Create new feedback
+                $feedback = Feedback::create($data);
+                $this->feedback_id = $feedback->id;
+                Log::info('Feedback created and completed', ['id' => $feedback->id]);
+            }
+
+            $this->formSubmitted = true;
+            session()->flash('success', 'Thank you for your feedback!');
+
+        } catch (\Exception $e) {
+            Log::error('Feedback submission error: ' . $e->getMessage());
+            session()->flash('error', 'An error occurred while saving your feedback. Please try again.');
+        }
     }
 
     public function render()
